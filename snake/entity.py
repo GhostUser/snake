@@ -32,6 +32,7 @@ class Snake(pygame.sprite.RenderPlain):
 
     def __init__(self, *snake_units):
         super().__init__(*snake_units)
+        self.dead = False
         self.direction = Direction.E
         self.new_direction = self.direction
         self.frametime_counter = 0
@@ -43,6 +44,7 @@ class Snake(pygame.sprite.RenderPlain):
             pygame.K_LEFT: Direction.W,
         }
         self.add([SnakeUnit() for n in range(Game.NUM_UNITS_RESPAWN)])
+        self.new_head = None
 
     def update(self, frametime: int, food_group: pygame.sprite.Group):
         for event in pygame.event.get():
@@ -64,28 +66,43 @@ class Snake(pygame.sprite.RenderPlain):
 
         # Using frametime keeps the movement relatively stable despite the FPS the game is running at
         if self.frametime_counter >= self.frametime_for_step:
-            self.step()
+            self.direction = self.new_direction
+
+            if self.new_head is None:
+                self.step()
+            else:
+                head: SnakeUnit = self.sprites().pop()
+                x_mov = self.direction.value[0]
+                y_mov = self.direction.value[1]
+                self.new_head.rect = head.rect.move(x_mov, y_mov)
+                self.add(self.new_head)
+                self.new_head = None
+
             self.frametime_counter = 0
             head: SnakeUnit = self.sprites().pop()
             collided_foods = pygame.sprite.spritecollide(head, food_group, dokill=True)
-            if len(collided_foods) > 0:
+            if collided_foods:
+                self.new_head = SnakeUnit()
                 food_group.add(Food(self))
-                new_head = SnakeUnit()
-                x_mov = self.direction.value[0]
-                y_mov = self.direction.value[1]
-                new_head.rect = head.rect.move(x_mov, y_mov)
-                self.add(new_head)
 
-            # Correct snake position if it is out of screen
+            # Kill snake if it is out of screen
             head: SnakeUnit = self.sprites().pop()
-            if head.rect.x < 0:
-                head.rect.x = Screen.WIDTH - head.rect.w
-            elif head.rect.x > Screen.WIDTH - head.rect.w:
-                head.rect.x = 0
-            elif head.rect.y < 0:
-                head.rect.y = Screen.HEIGHT - head.rect.h
-            elif head.rect.y > Screen.HEIGHT - head.rect.h:
-                head.rect.y = 0
+            if (
+                head.rect.x < 0
+                or head.rect.x > Screen.WIDTH - head.rect.w
+                or head.rect.y < 0
+                or head.rect.y > Screen.HEIGHT - head.rect.h
+            ):
+                self.dead = True
+
+            # Kill snake if it collides with itself
+            if not self.dead:
+                sprites: List[SnakeUnit] = self.sprites()
+                head: SnakeUnit = sprites.pop()
+                for sprite in sprites:
+                    if pygame.sprite.collide_rect(sprite, head):
+                        self.dead = True
+                        break
 
         else:
             self.frametime_counter += frametime
@@ -96,7 +113,6 @@ class Snake(pygame.sprite.RenderPlain):
         """
         sprites: List[SnakeUnit] = self.sprites()
         head: SnakeUnit = sprites.pop()
-        self.direction = self.new_direction
         x_mov = self.direction.value[0]
         y_mov = self.direction.value[1]
         previous_sprite_rect = head.rect.copy()
